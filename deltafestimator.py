@@ -158,10 +158,33 @@ class base_model:
         return self
 
 
-class deltafestimator(base_model):
+class hkl_model(base_model):
+    """
+    This is a model for crystallographic inference wherein a subset of the log variables have associated miller indices. 
+    """
     H = None
     K = None
     L = None
+    miller_vars = None
+
+    def _update_result(self):
+        if 'Miller' not in self.result:
+            self.result['Miller'] = None
+        miller_result = pd.DataFrame()
+        miller_result['H'], miller_result['K'], miller_result['L'] = self.H, self.K, self.L
+        for k,v in self.hyperparameters.items():
+            miller_result[k] = self._feed_dict[v]
+        for k,v in self.variables.items():
+            result = pd.DataFrame()
+            result[k] = np.array(self._sess.run(v, feed_dict=self._feed_dict)).flatten()
+            if k in self.miller_vars:
+                miller_result[k] = result[k]
+            for key,value in self.hyperparameters.items():
+                result[key] = self._feed_dict[value]
+            self.result[k] = pd.concat((self.result[k], result))
+        self.result['Miller'] = pd.concat((self.result['Miller'], miller_result))
+
+class deltafestimator(hkl_model):
 
     def __init__(self, df):
         self._build_graph(df)
@@ -283,6 +306,7 @@ class deltafestimator(base_model):
         self.logvars['Icryst'] = Icryst
         self.logvars['regularizer'] = regularizer
         self.logvars['sparsifier'] = sparsifier
+        self.miller_vars = ['DeltaF', 'SIGMA(DeltaF)']
 
 
 """
