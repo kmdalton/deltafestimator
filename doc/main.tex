@@ -41,7 +41,12 @@ $asu(h)$ & The equivalent Miller index to $h$ in the reciprocal asymmetric unit.
 
 
 \subsection{Experimental Data and Metadata}
-Our data consist mainly of integrated reflection intensities. Let the reflection with Miller index, $h$, from image $i$ be denoted $I_{h,i}$. 
+Our data consist mainly of integrated reflection intensities. 
+Let the reflection with Miller index, $h$, from image $i$ be denoted $I_{h,i}$. 
+Generically, I will use $n$ to refer to images during which the crystal has been excited by a laser and $f$ to denote those that have not. 
+When it is not clear from other context whether an image is "pumped" or not, I will rely no this convention
+$I_{h,n \in N \cap \phi_s \cap R_k}$ will refer to the set of intensities for the reflection with Miller index, $h$, acquired for crystal $k$ in orientation $s$ which have been pumped with a laser. 
+$I_{h,f \in F \cap \phi_s \cap R_k}$ would be the corresponding set of dark images to the previous set.
 
 The most salient metadata are those from the intensity position monitors (IPMs) which lie upstream of the sample position at XPP. 
 These detectors are described in some detail in another document. 
@@ -70,6 +75,22 @@ $J_i$ & The actual photon flux through the crystal associated with image $i$ \\
 
 \subsection{Inference and Ratio Equations}
 The goal of this inference package is to employ the equations for the ratio method \cite{coppens} to infer fourier difference map coefficients. 
-In effect, what we would like to 
+According to the random diffuse excitation model, the observed intensity ratio between still images acquired at the same crystal orientation is approximately
+\begin{equation}
+\frac{I_{h,n}}{I_{h,f}} =  1 + 2P\frac{\Delta F_{asu(h)}} {F_{asu(h)}}
+\end{equation}
+where P is the fraction of proteins that are excited by the laser. 
+This version of the ratio equation assumes equivalent photon flux between image $n$ and $f$. 
+We know this is not, the case for our experiment.
+Therefore, we must augment the model as
+\begin{equation}
+\frac{I_{h,n}J_f}{I_{h,f}J_n} =  1 + 2P\frac{\Delta F_{asu(h)}} {F_{asu(h)}}
+\end{equation}
+
+Assuming a Gaussian error model, we can write a likelihood
+\begin{equation}
+-\log P(I_{h,N} | I_{h,F}) = \sum_{s,k} \frac{1}{w_{s,k}} (\sum
+\end{equation}
+
 
 \end{document}
