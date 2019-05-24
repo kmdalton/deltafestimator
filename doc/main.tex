@@ -1,0 +1,75 @@
+\documentclass{report}
+\usepackage[utf8]{inputenc}
+\usepackage{textgreek}
+\usepackage{gensymb}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\graphicspath{ {renders/} }
+
+
+
+\begin{document}
+\chapter{Reference for Regularized Models of Fourier Difference Coefficients}
+\section{Description of Data}
+These routines are meant to analyze time resolved crystallography data collected using the ratio method and X-ray free electron lasers. This particular implementation is focused on data collected by the Hekstra lab at the X-ray Pump Probe (XPP) endstation of the Linac Coherent Light Source (LCLS) during the fall of 2017. The general ideas evolved here should be applicable to future experiments with minor modifications to the source code. 
+
+The data in question consist of integrated reflection intensities from X-ray diffraction images collected ongoniometer mounted samples as well as associated metadata. 12 still images were collected at each goniometer angle in the datasets. Of the 12 images, 8 were acquired 300 fs after the initiation of a 1 ps THz laser pulse. 
+
+\section{Notation}
+I am going to use some set notation to keep track of summation indices throughout this document. 
+
+
+\subsection{Indices for Data Address}
+We will adopt some conventions to describe indexing of integrated Bragg peak intensities, IPM data, and optimization variables.
+Let the dataset consist of a number of images indexed by $i\in {1, 2, ... n}$.
+Then the indexes shall be subdivided into sets as follows:
+\break
+
+
+\begin{center}
+\begin{tabular}{r | p{0.5\textwidth}}
+$R_r$ & The set of images in run (crystal) number k \\ \hline
+$\phi_s$ & The set of images with an oscillation number s \\ \hline
+$N$ & The set of on images \\ \hline
+$F$ & The set of off images \\ \hline
+$h\in H$ & Shorthand for the Miller index corresponding to a reflection in the unmerged reciprocal lattice; a member of $H$ or the set of all the reflection in the dataset. \\ \hline
+$asu(h)$ & The equivalent Miller index to $h$ in the reciprocal asymmetric unit. $\{asu(h) | h\in H \}$ is the set of merged reflections in the data set.
+\end{tabular} 
+\end{center}
+
+
+\subsection{Experimental Data and Metadata}
+Our data consist mainly of integrated reflection intensities. Let the reflection with Miller index, $h$, from image $i$ be denoted $I_{h,i}$. 
+
+The most salient metadata are those from the intensity position monitors (IPMs) which lie upstream of the sample position at XPP. 
+These detectors are described in some detail in another document. 
+Briefly, they consist of four diodes which measure backscattered photons from a silicon nitride membrane.
+The four readings supply an estimate of beam intensity and can be used to estimate the position of the beam center. 
+There are two IPMs for which we have metadata, called $IPM_2$ \& $IPM_3$. 
+Let readings associated with image $i$ and $IPM_n$ be denoted $IPM_{n,i}$.
+If the readings from the four diodes need be addressed individually, I will denote them as $T_{n, i}, B_{n, i}, L_{n, i}, R_{n, i}$ for the top, bottom, left and right diodes respectively. 
+If the beam position estimates are required, I will use $X_{n,i}$, $Y_{n,i}$ for the beam X and Y positions estimated from $IPM_n$ for image $i$. 
+I will use the expression $IPM_n,i$ to refer to the total intensity of the four diodes of detector $n$ for a given X-ray pulse associated with image $i$. 
+That is to say, $IPM_{n,i} = T_{n,i}+B_{n,i}+L_{n,i}+R_{n,i}$.
+I determined that that fluctuations of the beam center make $IPM_{n,i}$ a poor approximation of the photon flux incident on the crystal during acquisition of image $i$. 
+Therefore, I will introduce the term $J_i$ to represent the true photon flux over the surface of the crystal. 
+These terms are summarized in the table below.
+
+\begin{center}
+\begin{tabular}{r | p{0.5\textwidth}}
+$T_{n,i}$ & The intensity of the top diode of $IPM_n$ associated with image $i$ \\ \hline
+$B_{n,i}$ & The intensity of the bottom diode of $IPM_n$ associated with image $i$ \\ \hline
+$L_{n,i}$ & The intensity of the left diode of $IPM_n$ associated with image $i$ \\ \hline
+$R_{n,i}$ & The intensity of the right diode of $IPM_n$ associated with image $i$ \\ \hline
+$IPM_{n,i}$ & The total intensity of all diodes of $IPM_n$ associated with image $i$ \\ \hline
+$J_i$ & The actual photon flux through the crystal associated with image $i$ \\ 
+\end{tabular} 
+\end{center}
+
+\subsection{Inference and Ratio Equations}
+The goal of this inference package is to employ the equations for the ratio method \cite{coppens} to infer fourier difference map coefficients. 
+In effect, what we would like to 
+
+\end{document}
