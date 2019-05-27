@@ -1,4 +1,5 @@
 \documentclass{report}
+\usepackage[margin=1.0in]{geometry}
 \usepackage[utf8]{inputenc}
 \usepackage{textgreek}
 \usepackage{gensymb}
@@ -34,8 +35,8 @@ $R_r$ & The set of images in run (crystal) number k \\ \hline
 $\phi_s$ & The set of images with an oscillation number s \\ \hline
 $N$ & The set of on images \\ \hline
 $F$ & The set of off images \\ \hline
-$h\in H$ & Shorthand for the Miller index corresponding to a reflection in the unmerged reciprocal lattice; a member of $H$ or the set of all the reflection in the dataset. \\ \hline
-$asu(h)$ & The equivalent Miller index to $h$ in the reciprocal asymmetric unit. $\{asu(h) | h\in H \}$ is the set of merged reflections in the data set.
+$h\in H$ & Shorthand for the Miller index corresponding to a reflection in the unmerged lattice containing redundant, symmetry related indices ($H$). \\ \hline
+$\{h\}$ & The equivalent Miller index to $h$ within the merged, reciprocal asymmetric unit.
 \end{tabular} 
 \end{center}
 
@@ -77,20 +78,50 @@ $J_i$ & The actual photon flux through the crystal associated with image $i$ \\
 The goal of this inference package is to employ the equations for the ratio method \cite{coppens} to infer fourier difference map coefficients. 
 According to the random diffuse excitation model, the observed intensity ratio between still images acquired at the same crystal orientation is approximately
 \begin{equation}
-\frac{I_{h,n}}{I_{h,f}} =  1 + 2P\frac{\Delta F_{asu(h)}} {F_{asu(h)}}
+\frac{I_{h,n}}{I_{h,f}} =  1 + 2P\frac{\Delta F_{\{h\}}} {F_{\{h\}}}
 \end{equation}
-where P is the fraction of proteins that are excited by the laser. 
+where $P$ is the fraction of proteins that are excited by the laser. 
+$F_{h}$ refers to the reference structure factor amplitude in the ground state.
 This version of the ratio equation assumes equivalent photon flux between image $n$ and $f$. 
-We know this is not, the case for our experiment.
-Therefore, we must augment the model as
+This is not the case for our experiment.
+Therefore, I augment the equation to account for photon flux
+\begin{equation}\label{eq:ratio}
+\frac{I_{h,n}J_f}{I_{h,f}J_n} =  1 + 2P\frac{\Delta F_{\{h\}}} {F_{\{h\}}}.
+\end{equation}
+For convenience, I will assume $P=\frac{1}{2}$. 
+This change only effects the width of the $\Delta F$ distribution. 
+Because difference maps are thresholded relatively, the true value of $P$ has no impact on the map. 
+By substituting and rearranging \eqref{eq:ratio}, 
 \begin{equation}
-\frac{I_{h,n}J_f}{I_{h,f}J_n} =  1 + 2P\frac{\Delta F_{asu(h)}} {F_{asu(h)}}
+I_{h,n} - I_{h,f} \frac{J_n}{J_f} ( 1 + \frac{\Delta F_{h}} {F_{h}}) = 0. 
+\end{equation}
+Which amounts to a set of equations that are satisfied by the experimental data. 
+The intensities can be sumed to yield one constraint on $\Delta F$ per miller index, per orientation of a sample. 
+
+\begin{equation}
+\sum_{n\in \phi_s\cap N} I_{h,n} - \sum_{f\in \phi_s\cap F} I_{h,f} \frac{\sum_{n\in\phi_s\cap N} J_n}{\sum_{f\in\phi_s\cap F} J_f} ( 1 + \frac{\Delta F_{h}} {F_{h}}) = 0. 
+\end{equation}
+%TODO: Think of a way to fix the following shortcoming in this notation. 
+%Ideally, the solution should not involve delta functions.
+The above notation, does not explicitly express the notion that $J$ should not be counted for images whereinthe Miller index was not observed or was rejected as an outlier. 
+
+Assuming a Gaussian error model, we can write a log likelihood for the pumped intensities as 
+\begin{equation}\label{eq:ml}
+\begin{aligned}
+-\log P(I_{h,N}|I_{h,F},\Delta F, J) = \sum_{s,k,h}w_{s,k,h} \bigg[ \sum_{n\in R_k \cap \phi_s\cap N} I_{h,n} - \sum_{f\in R_k \cap \phi_s\cap F} I_{h,f} \frac{\sum_{n\in R_k \cap \phi_s\cap N} J_n}{\sum_{f\in R_k \cap \phi_s\cap F} J_f} ( 1 + \frac{\Delta F_{h}} {F_{h}}) \bigg]^2  \\
+w_{s,k,h} = \bigg[\sum_{n\in R_k\cap \phi_s\cap N}\sigma^2_{I_{h,n}} + \
+             \bigg(\frac {\sum_{n\in R_k \cap \phi_s\cap N} J_n}{\sum_{f\in R_k \cap \phi_s\cap F} J_f}\bigg)^2\
+             \bigg(1 + \frac{\Delta F_h}{F_h}\bigg)^2 \
+             \sum_{n\in R_k\cap \phi_s\cap F}\sigma^2_{I_{h,f}}\bigg]^{-2}
+\end{aligned}
 \end{equation}
 
-Assuming a Gaussian error model, we can write a likelihood
+In the reference implementation, \eqref{eq:ml} is maximized over $\Delta F$ and $J$. However, naively optimizing this equation yields, very badly overfit parameters. Therefore, two regularizers are introduced to combat this, and the proper optimization problem is
 \begin{equation}
--\log P(I_{h,N} | I_{h,F}) = \sum_{s,k} \frac{1}{w_{s,k}} (\sum
+\underset{\Delta F,J}{argmin} \quad -\log P(I_{h,N}|I_{h,F}, \Delta F, J) + \rho ||J - IPM_2||_2^2 + \lambda ||\Delta F||_2^2
 \end{equation}
+which enforces a Guassian prior on photon flux and the fourier difference coefficients. 
+The strengths of the regularizers, $\rho$ and $\lambda$ can be chosen by crossvalidation. 
 
 
 \end{document}
