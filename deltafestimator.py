@@ -157,7 +157,6 @@ class base_model:
         self._sess.close()
         return self
 
-
 class hkl_model(base_model):
     """
     This is a model for crystallographic inference wherein a subset of the log variables have associated miller indices. 
