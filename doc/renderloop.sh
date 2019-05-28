@@ -1,5 +1,5 @@
 pdflatex --interaction=batchmode main.tex
-evince main.pdf
+evince main.pdf&
 sleep 5
 
 while true;do 
