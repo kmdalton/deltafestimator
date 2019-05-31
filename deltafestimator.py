@@ -517,15 +517,17 @@ class deltafestimator_physical_laplacian(hkl_model):
              xstd*np.ones(r, dtype=np.float32),
             -ystd*np.ones(r, dtype=np.float32),
              ystd*np.ones(r, dtype=np.float32),
+             np.ones(1, dtype=np.float32),
         )))
         deltaF = variables[:h]
         xmin = variables[h:h+r]
         xmax = variables[h:h+r]
         ymin = variables[h+r:h+2*r]
         ymax = variables[h+2*r:h+3*r]
+        ipm_zp = variables[-1]
         gammas = deltaF/Foff + 1 #This is only here for backward compatibility. We will not use it directly
         DF = tf.gather(deltaF, gammaidx)
-        Icryst = ipm*tf.nn.softplus(ipm * (
+        Icryst = (ipm + ipm_zp)*tf.nn.softplus(ipm * (
             tf.erf(tf.gather(xmax, runidx) - ipmx) - 
             tf.erf(tf.gather(xmin, runidx) - ipmx) + 
             tf.erf(tf.gather(ymax, runidx) - ipmy) - 
@@ -663,15 +665,17 @@ class deltafestimator_physical_gaussian(hkl_model):
              xstd*np.ones(r, dtype=np.float32),
             -ystd*np.ones(r, dtype=np.float32),
              ystd*np.ones(r, dtype=np.float32),
+             np.zeros(1, dtype=np.float32),
         )))
         deltaF = variables[:h]
         xmin = variables[h:h+r]
         xmax = variables[h:h+r]
         ymin = variables[h+r:h+2*r]
         ymax = variables[h+2*r:h+3*r]
+        ipm_zp = variables[-1]
         gammas = deltaF/Foff + 1 #This is only here for backward compatibility. We will not use it directly
         DF = tf.gather(deltaF, gammaidx)
-        Icryst = ipm*tf.nn.softplus(ipm * (
+        Icryst = (ipm + ipm_zp)*tf.nn.softplus(ipm * (
             tf.erf(tf.gather(xmax, runidx) - ipmx) - 
             tf.erf(tf.gather(xmin, runidx) - ipmx) + 
             tf.erf(tf.gather(ymax, runidx) - ipmy) - 
