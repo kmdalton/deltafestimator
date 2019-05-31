@@ -3,7 +3,6 @@ from tqdm import tqdm
 import pandas as pd
 import numpy as np
 from sys import stdout
-import tensorflow_probability as tfp
 from scipy import sparse
 from tensorflow.python.ops.parallel_for.gradients import jacobian
 from tensorflow.contrib.layers import dense_to_sparse
