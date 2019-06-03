@@ -12,6 +12,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow import dtypes
 
 pd.options.mode.chained_assignment = None
+tf.logging.set_verbosity(tf.logging.ERROR)
 
 
 """
@@ -513,10 +514,10 @@ class deltafestimator_physical_laplacian(hkl_model):
         ystd = np.std(imagemetadata[intensitykey+'_ypos'])
         variables = tf.Variable(np.concatenate((
             np.ones(h, dtype=np.float32),
-            -xstd*np.ones(r, dtype=np.float32),
-             xstd*np.ones(r, dtype=np.float32),
-            -ystd*np.ones(r, dtype=np.float32),
-             ystd*np.ones(r, dtype=np.float32),
+            -2.*xstd*np.ones(r, dtype=np.float32),
+             2.*xstd*np.ones(r, dtype=np.float32),
+            -2.*ystd*np.ones(r, dtype=np.float32),
+             2.*ystd*np.ones(r, dtype=np.float32),
              np.ones(1, dtype=np.float32),
         )))
         deltaF = variables[:h]
@@ -529,7 +530,8 @@ class deltafestimator_physical_laplacian(hkl_model):
         DF = tf.gather(deltaF, gammaidx)
         Icryst = (ipm + ipm_zp)*tf.nn.softplus(ipm * (
             tf.erf(tf.gather(xmax, runidx) - ipmx) - 
-            tf.erf(tf.gather(xmin, runidx) - ipmx) + 
+            tf.erf(tf.gather(xmin, runidx) - ipmx)
+            ) * (
             tf.erf(tf.gather(ymax, runidx) - ipmy) - 
             tf.erf(tf.gather(ymin, runidx) - ipmy)
         ))
@@ -580,11 +582,16 @@ class deltafestimator_physical_laplacian(hkl_model):
         self.variables['SIGMA(DeltaF)'] = 1./(diag_A + epsilon)
         self.variables[referencekey] = Foff
         self.variables['Icryst'] = Icryst
+        self.variables['xmin'] = xmin
+        self.variables['xmax'] = xmax
+        self.variables['ymin'] = ymin
+        self.variables['ymax'] = ymax
         self.variables[intensitykey] = ipm
+        self.variables['ipm-zero'] = ipm_zp
         self.logvars['Loss'] = loss
         self.logvars['Sparsifier'] = sparsifier
         self.logvars['Likelihood'] = likelihood
-        self.miller_vars = ['DeltaF', 'SIGMA(DeltaF)', referencekey]
+        self.miller_vars = ['DeltaF', 'SIGMA(DeltaF)', 'Hessian Diagonal', referencekey]
 
 class deltafestimator_physical_gaussian(hkl_model):
     def __init__(self, df):
@@ -661,10 +668,10 @@ class deltafestimator_physical_gaussian(hkl_model):
         ystd = np.std(imagemetadata[intensitykey+'_ypos'])
         variables = tf.Variable(np.concatenate((
             np.ones(h, dtype=np.float32),
-            -xstd*np.ones(r, dtype=np.float32),
-             xstd*np.ones(r, dtype=np.float32),
-            -ystd*np.ones(r, dtype=np.float32),
-             ystd*np.ones(r, dtype=np.float32),
+            -2*xstd*np.ones(r, dtype=np.float32),
+             2*xstd*np.ones(r, dtype=np.float32),
+            -2*ystd*np.ones(r, dtype=np.float32),
+             2*ystd*np.ones(r, dtype=np.float32),
              np.zeros(1, dtype=np.float32),
         )))
         deltaF = variables[:h]
@@ -677,7 +684,8 @@ class deltafestimator_physical_gaussian(hkl_model):
         DF = tf.gather(deltaF, gammaidx)
         Icryst = (ipm + ipm_zp)*tf.nn.softplus(ipm * (
             tf.erf(tf.gather(xmax, runidx) - ipmx) - 
-            tf.erf(tf.gather(xmin, runidx) - ipmx) + 
+            tf.erf(tf.gather(xmin, runidx) - ipmx)
+            ) * (
             tf.erf(tf.gather(ymax, runidx) - ipmy) - 
             tf.erf(tf.gather(ymin, runidx) - ipmy)
         ))
@@ -713,7 +721,7 @@ class deltafestimator_physical_gaussian(hkl_model):
         ]    
         # Iterate over all elements of the gradient and compute second order
         # derivatives.
-        gradients = tf.gradients(likelihood, DF)[0]
+        gradients = tf.gradients(loss, DF)[0]
         gradients = array_ops.reshape(gradients, [-1])
         _, diag_A = control_flow_ops.while_loop(
             lambda j, _: j < n, 
@@ -728,9 +736,14 @@ class deltafestimator_physical_gaussian(hkl_model):
         self.variables['SIGMA(DeltaF)'] = 1./(diag_A + epsilon)
         self.variables[referencekey] = Foff
         self.variables['Icryst'] = Icryst
+        self.variables['xmin'] = xmin
+        self.variables['xmax'] = xmax
+        self.variables['ymin'] = ymin
+        self.variables['ymax'] = ymax
         self.variables[intensitykey] = ipm
+        self.variables['ipm-zero'] = ipm_zp
         self.logvars['Loss'] = loss
         self.logvars['Sparsifier'] = sparsifier
         self.logvars['Likelihood'] = likelihood
-        self.miller_vars = ['DeltaF', 'SIGMA(DeltaF)', referencekey]
+        self.miller_vars = ['DeltaF', 'SIGMA(DeltaF)', 'Hessian Diagonal', referencekey]
 
