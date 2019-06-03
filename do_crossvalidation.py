@@ -6,7 +6,7 @@ from sys import argv
 
 inFN = argv[1]
 outFN= argv[2]
-lmin,lmax,lstep = -5, 0, 50
+lmin,lmax,lstep = -5, 1, 50
 lambdas = np.logspace(lmin, lmax, lstep)
 
 
@@ -53,15 +53,11 @@ for k in I:
 Ftrace1 = pd.DataFrame()
 Ftrace2 = pd.DataFrame()
 Icryst = pd.DataFrame()
-I['MASK'] = True
 
 I['MASK'] = True
 I['MASK'] = np.array(I[['RUN', 'PHINUMBER', 'MASK']].groupby(['RUN', 'PHINUMBER']).transform(lambda x: np.random.random()) < 0.5)
 
 
-I['MASK'] = True
-
-I['MASK'] = np.array(I[['RUN', 'PHINUMBER', 'MASK']].groupby(['RUN', 'PHINUMBER']).transform(lambda x: np.random.random()) < 0.5)
 n = deltafestimator.deltafestimator_physical_gaussian(I[I['MASK']])
 n.train({'LAMBDA': lambdas}, maxiter=maxiter, tolerance=tolerance)
 _Ftrace1 = n.result['Miller']
@@ -85,6 +81,4 @@ Icryst = pd.concat((Icryst, _Icryst2))
 
 
 Ftrace = Ftrace1.reset_index().join(Ftrace2.reset_index().set_index(['LAMBDA',  'H', 'K', 'L']), ['LAMBDA', 'H', 'K', 'L'], rsuffix='_2').dropna()
-
-
 Ftrace.to_csv(outFN)
