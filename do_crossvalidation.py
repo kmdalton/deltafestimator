@@ -12,15 +12,15 @@ from sys import argv
 
 inFN = argv[1]
 outFN= argv[2]
-#lmin,lmax,lstep = -5, 1, 50
-lmin,lmax,lstep = -5, 1, 1
+lmin,lmax,lstep = -5, 1, 20
+#lmin,lmax,lstep = -5, 1, 1
 lambdas = np.logspace(lmin, lmax, lstep)
 
 
 tolerance = 1e-7
 intensitykey = 'ipm2'
-#maxiter = 2000
-maxiter = 2
+maxiter = 2000
+#maxiter = 2
 referencekey = 'FCALC'
 
 
