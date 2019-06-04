@@ -273,7 +273,7 @@ class deltafestimator(hkl_model):
         )
 
         regularizer = rhop*tf.losses.mean_squared_error(ipm, Icryst)
-        sparsifier  = lp*tf.losses.mean_squared_error(tf.zeros(DF.shape), DF)
+        sparsifier  = lp*tf.losses.mean_squared_error(tf.zeros(deltaF.shape), deltaF)
 
         loss = likelihood + regularizer + sparsifier
 
@@ -290,12 +290,12 @@ class deltafestimator(hkl_model):
         ]    
         # Iterate over all elements of the gradient and compute second order
         # derivatives.
-        gradients = tf.gradients(likelihood, DF)[0]
+        gradients = tf.gradients(likelihood, deltaF)[0]
         gradients = array_ops.reshape(gradients, [-1])
         _, diag_A = control_flow_ops.while_loop(
             lambda j, _: j < n, 
             lambda j, result: (j + 1, 
-                               result.write(j, tf.gather(tf.gradients(gradients[j], DF)[0], j))),
+                               result.write(j, tf.gather(tf.gradients(gradients[j], deltaF)[0], j))),
             loop_vars
         )    
         epsilon = 1e-32
@@ -399,8 +399,7 @@ class deltafestimator_laplacian(hkl_model):
         )
 
         regularizer = rhop*tf.losses.mean_squared_error(ipm, Icryst)
-        #sparsifier  = lp*tf.losses.mean_squared_error(tf.zeros(DF.shape), DF)
-        sparsifier  = lp*tf.linalg.norm(DF, 1)/tf.size(DF, out_type=tf.float32)
+        sparsifier  = lp*tf.linalg.norm(deltaF, 1)/tf.size(deltaF, out_type=tf.float32)
 
         loss = likelihood + regularizer + sparsifier
 
@@ -417,12 +416,12 @@ class deltafestimator_laplacian(hkl_model):
         ]    
         # Iterate over all elements of the gradient and compute second order
         # derivatives.
-        gradients = tf.gradients(likelihood, DF)[0]
+        gradients = tf.gradients(likelihood, deltaF)[0]
         gradients = array_ops.reshape(gradients, [-1])
         _, diag_A = control_flow_ops.while_loop(
             lambda j, _: j < n, 
             lambda j, result: (j + 1, 
-                               result.write(j, tf.gather(tf.gradients(gradients[j], DF)[0], j))),
+                               result.write(j, tf.gather(tf.gradients(gradients[j], deltaF)[0], j))),
             loop_vars
         )    
         epsilon = 1e-32
@@ -550,7 +549,7 @@ class deltafestimator_physical_laplacian(hkl_model):
             weights=weights
         )
 
-        sparsifier  = tf.linalg.norm(DF, 1)/tf.size(DF, out_type=tf.float32)
+        sparsifier  = tf.linalg.norm(deltaF, 1)/tf.size(deltaF, out_type=tf.float32)
 
         loss = (1. - lp)*likelihood + lp*sparsifier
 
@@ -560,19 +559,19 @@ class deltafestimator_physical_laplacian(hkl_model):
         self.L = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDL'], dtype=int)
 
         # Declare an iterator and tensor array loop variables for the gradients.
-        n = array_ops.size(gammas)
+        n = array_ops.size(deltaF)
         loop_vars = [
             array_ops.constant(0, dtypes.int32),
             tensor_array_ops.TensorArray(gammas.dtype, n)
         ]    
         # Iterate over all elements of the gradient and compute second order
         # derivatives.
-        gradients = tf.gradients(loss, DF)[0]
+        gradients = tf.gradients(loss, deltaF)[0]
         gradients = array_ops.reshape(gradients, [-1])
         _, diag_A = control_flow_ops.while_loop(
             lambda j, _: j < n, 
             lambda j, result: (j + 1, 
-                               result.write(j, tf.gather(tf.gradients(gradients[j], DF)[0], j))),
+                               result.write(j, tf.gather(tf.gradients(gradients[j], deltaF)[0], j))),
             loop_vars
         )    
         epsilon = 1e-32
@@ -704,7 +703,7 @@ class deltafestimator_physical_gaussian(hkl_model):
             weights=weights
         )
 
-        sparsifier  = tf.losses.mean_squared_error(tf.zeros(DF.shape), DF)
+        sparsifier  = tf.losses.mean_squared_error(tf.zeros(deltaF.shape), deltaF)
 
         loss = (1. - lp)*likelihood + lp*sparsifier
 
@@ -714,19 +713,19 @@ class deltafestimator_physical_gaussian(hkl_model):
         self.L = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDL'], dtype=int)
 
         # Declare an iterator and tensor array loop variables for the gradients.
-        n = array_ops.size(gammas)
+        n = array_ops.size(deltaF)
         loop_vars = [
             array_ops.constant(0, dtypes.int32),
             tensor_array_ops.TensorArray(gammas.dtype, n)
         ]    
         # Iterate over all elements of the gradient and compute second order
         # derivatives.
-        gradients = tf.gradients(likelihood, DF)[0]
+        gradients = tf.gradients(loss, deltaF)[0]
         gradients = array_ops.reshape(gradients, [-1])
         _, diag_A = control_flow_ops.while_loop(
             lambda j, _: j < n, 
             lambda j, result: (j + 1, 
-                               result.write(j, tf.gather(tf.gradients(gradients[j], DF)[0], j))),
+                               result.write(j, tf.gather(tf.gradients(gradients[j], deltaF)[0], j))),
             loop_vars
         )    
         epsilon = 1e-32
