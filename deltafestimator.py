@@ -550,9 +550,9 @@ class deltafestimator_physical_laplacian(hkl_model):
             weights=weights
         )
 
-        sparsifier  = lp*tf.linalg.norm(DF, 1)/tf.size(DF, out_type=tf.float32)
+        sparsifier  = tf.linalg.norm(DF, 1)/tf.size(DF, out_type=tf.float32)
 
-        loss = likelihood + sparsifier
+        loss = (1. - lp)*likelihood + lp*sparsifier
 
         #print("6: {}".format(time() - start))
         self.H = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDH'], dtype=int)
@@ -567,7 +567,7 @@ class deltafestimator_physical_laplacian(hkl_model):
         ]    
         # Iterate over all elements of the gradient and compute second order
         # derivatives.
-        gradients = tf.gradients(likelihood, DF)[0]
+        gradients = tf.gradients(loss, DF)[0]
         gradients = array_ops.reshape(gradients, [-1])
         _, diag_A = control_flow_ops.while_loop(
             lambda j, _: j < n, 
@@ -704,9 +704,9 @@ class deltafestimator_physical_gaussian(hkl_model):
             weights=weights
         )
 
-        sparsifier  = lp*tf.losses.mean_squared_error(tf.zeros(DF.shape), DF)
+        sparsifier  = tf.losses.mean_squared_error(tf.zeros(DF.shape), DF)
 
-        loss = likelihood + sparsifier
+        loss = (1. - lp)*likelihood + lp*sparsifier
 
         #print("6: {}".format(time() - start))
         self.H = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDH'], dtype=int)
@@ -721,7 +721,7 @@ class deltafestimator_physical_gaussian(hkl_model):
         ]    
         # Iterate over all elements of the gradient and compute second order
         # derivatives.
-        gradients = tf.gradients(loss, DF)[0]
+        gradients = tf.gradients(likelihood, DF)[0]
         gradients = array_ops.reshape(gradients, [-1])
         _, diag_A = control_flow_ops.while_loop(
             lambda j, _: j < n, 
