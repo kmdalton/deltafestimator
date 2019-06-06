@@ -746,3 +746,313 @@ class deltafestimator_physical_gaussian(hkl_model):
         self.logvars['Likelihood'] = likelihood
         self.miller_vars = ['DeltaF', 'SIGMA(DeltaF)', 'Hessian Diagonal', referencekey]
 
+class deltafestimator_physical_gaussian_deltafoverf(hkl_model):
+    def __init__(self, df):
+        self._build_graph(df)
+
+    def _build_graph(self, df, referencekey='FCALC', intensitykey='ipm2'):
+        tf.reset_default_graph()
+        lp = tf.placeholder(tf.float32)
+        self.hyperparameters['LAMBDA'] = lp
+
+        indices = {
+            'GAMMAINDEX'        : ['MERGEDH', 'MERGEDK', 'MERGEDL'],
+            'RUNINDEX'          : 'RUN',
+            'IMAGEINDEX'        : ['RUN', 'PHINUMBER', 'SERIES'],
+            'PHIINDEX'          : ['RUN', 'PHINUMBER'],
+        }
+
+        for k,v in indices.items():
+            df.loc[:,k] = df.groupby(v).ngroup()
+        df
+
+        #Prepare the per image metadata
+        k = [i for i in df if 'ipm' in i.lower()]
+        k += ['RUNINDEX']
+        imagemetadata = df[k + ['IMAGEINDEX']].groupby('IMAGEINDEX').first()
+        runidx = imagemetadata['RUNINDEX'].values
+
+        #Construct pivot tables of intensities, errors, metadatakeys
+        iobs        = df.pivot_table(values='IOBS', index=['H', 'K', 'L', 'RUNINDEX','PHIINDEX'], columns='SERIES', fill_value=0)
+        imagenumber = df.pivot_table(values='IMAGEINDEX', index=['H', 'K', 'L', 'RUNINDEX', 'PHIINDEX'], columns='SERIES', fill_value=0)
+        sigma       = df.pivot_table(values='SIGMA(IOBS)', index=['H', 'K', 'L', 'RUNINDEX','PHIINDEX'], columns='SERIES', fill_value=0)
+
+        gammaidx = df.pivot_table(values='GAMMAINDEX', index=['H', 'K', 'L', 'RUNINDEX','PHIINDEX'])
+        gammaidx = np.array(gammaidx).flatten()
+        Foff = df[['GAMMAINDEX', referencekey]].groupby('GAMMAINDEX').first().values.flatten()
+        Foff_per_loss_term = Foff[gammaidx]
+        Foff,Foff_per_loss_term = tf.constant(Foff, dtype=tf.float32), tf.constant(Foff_per_loss_term, dtype=tf.float32)
+
+        ion    = iobs[[i for i in iobs if  'on' in i]].values
+        ioff   = iobs[[i for i in iobs if 'off' in i]].values
+        sigon  = sigma[[i for i in sigma if  'on' in i]].values**2
+        sigoff = sigma[[i for i in sigma if 'off' in i]].values**2
+        imon   = imagenumber[[i for i in imagenumber if  'on' in i]].values
+        imoff  = imagenumber[[i for i in imagenumber if 'off' in i]].values
+
+        #Compute inverse variance weights and normalize them to have rows sum to one
+        invaron,invaroff = sigon.copy(),sigoff.copy()
+        invaron[invaron > 0]    =  1/invaron[invaron > 0]
+        invaroff[invaroff > 0]  = 1/invaroff[invaroff > 0]
+        invaron  = invaron/invaron.sum(1)[:,None]
+        invaroff = invaroff/invaroff.sum(1)[:,None]
+
+        ion  = (ion*invaron).sum(1)
+        ioff = (ioff*invaroff).sum(1)
+        sigon  = (invaron**2*sigon).sum(1)
+        sigoff = (invaroff**2*sigoff).sum(1)
+
+        invaron  = tf.constant(invaron, dtype=tf.float32)
+        invaroff = tf.constant(invaroff, dtype=tf.float32)
+
+        ion     = tf.convert_to_tensor(ion, dtype=tf.float32, name='ion')
+        ioff    = tf.convert_to_tensor(ioff, dtype=tf.float32, name='ioff')
+        sigon   = tf.convert_to_tensor(sigon, dtype=tf.float32, name='sigon')
+        sigoff  = tf.convert_to_tensor(sigoff, dtype=tf.float32, name='sigoff')
+
+        #Problem Variables
+        h = gammaidx.max() + 1
+        r = runidx.max() + 1
+        ipm  = tf.constant(np.float32(imagemetadata[intensitykey]))
+        ipmx = tf.constant(np.float32(imagemetadata[intensitykey+'_xpos']))
+        ipmy = tf.constant(np.float32(imagemetadata[intensitykey+'_ypos']))
+        ipmy = tf.constant(np.float32(imagemetadata[intensitykey+'_ypos']))
+        xstd = np.std(imagemetadata[intensitykey+'_xpos'])
+        ystd = np.std(imagemetadata[intensitykey+'_ypos'])
+        variables = tf.Variable(np.concatenate((
+            np.ones(h, dtype=np.float32),
+            -2*xstd*np.ones(r, dtype=np.float32),
+             2*xstd*np.ones(r, dtype=np.float32),
+            -2*ystd*np.ones(r, dtype=np.float32),
+             2*ystd*np.ones(r, dtype=np.float32),
+             np.zeros(1, dtype=np.float32),
+        )))
+        deltaF = variables[:h]
+        xmin = variables[h:h+r]
+        xmax = variables[h:h+r]
+        ymin = variables[h+r:h+2*r]
+        ymax = variables[h+2*r:h+3*r]
+        ipm_zp = variables[-1]
+        gammas = deltaF/Foff + 1 #This is only here for backward compatibility. We will not use it directly
+        DF = tf.gather(deltaF, gammaidx)
+        Icryst = (ipm + ipm_zp)*tf.nn.softplus(ipm * (
+            tf.erf(tf.gather(xmax, runidx) - ipmx) - 
+            tf.erf(tf.gather(xmin, runidx) - ipmx)
+            ) * (
+            tf.erf(tf.gather(ymax, runidx) - ipmy) - 
+            tf.erf(tf.gather(ymin, runidx) - ipmy)
+        ))
+
+        Bon  = tf.reduce_sum(invaron*tf.gather(Icryst, imon), 1)
+        Boff = tf.reduce_sum(invaroff*tf.gather(Icryst, imoff), 1)
+
+        variance = ((DF/Foff_per_loss_term+ 1)*(Bon/Boff))**2*sigoff + sigon
+        weights = variance**-1
+        weights = weights/tf.reduce_sum(weights) #normalize the weights to one to stabilize regularizer tuning
+
+
+        likelihood = tf.losses.mean_squared_error(
+            ion,
+            (DF/Foff_per_loss_term + 1)*(Bon/Boff)*ioff,
+            weights=weights
+        )
+
+        sparsifier  = tf.losses.mean_squared_error(tf.zeros(deltaF.shape), deltaF/Foff)
+
+        loss = (1. - lp)*likelihood + lp*sparsifier
+
+        #print("6: {}".format(time() - start))
+        self.H = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDH'], dtype=int)
+        self.K = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDK'], dtype=int)
+        self.L = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDL'], dtype=int)
+
+        # Declare an iterator and tensor array loop variables for the gradients.
+        n = array_ops.size(deltaF)
+        loop_vars = [
+            array_ops.constant(0, dtypes.int32),
+            tensor_array_ops.TensorArray(gammas.dtype, n)
+        ]    
+        # Iterate over all elements of the gradient and compute second order
+        # derivatives.
+        gradients = tf.gradients(loss, deltaF)[0]
+        gradients = array_ops.reshape(gradients, [-1])
+        _, diag_A = control_flow_ops.while_loop(
+            lambda j, _: j < n, 
+            lambda j, result: (j + 1, 
+                               result.write(j, tf.gather(tf.gradients(gradients[j], deltaF)[0], j))),
+            loop_vars
+        )    
+        epsilon = 1e-32
+        diag_A = array_ops.reshape(diag_A.stack(), [n])
+        self.variables['DeltaF'] = deltaF
+        self.variables['Hessian Diagonal'] = diag_A
+        self.variables['SIGMA(DeltaF)'] = 1./(diag_A + epsilon)
+        self.variables[referencekey] = Foff
+        self.variables['Icryst'] = Icryst
+        self.variables['xmin'] = xmin
+        self.variables['xmax'] = xmax
+        self.variables['ymin'] = ymin
+        self.variables['ymax'] = ymax
+        self.variables[intensitykey] = ipm
+        self.variables['ipm-zero'] = ipm_zp
+        self.logvars['Loss'] = loss
+        self.logvars['Sparsifier'] = sparsifier
+        self.logvars['Likelihood'] = likelihood
+        self.miller_vars = ['DeltaF', 'SIGMA(DeltaF)', 'Hessian Diagonal', referencekey]
+
+class deltafestimator_physical_gaussian_with_spot_size(hkl_model):
+    def __init__(self, df):
+        self._build_graph(df)
+
+    def _build_graph(self, df, referencekey='FCALC', intensitykey='ipm2'):
+        tf.reset_default_graph()
+        lp = tf.placeholder(tf.float32)
+        self.hyperparameters['LAMBDA'] = lp
+
+        indices = {
+            'GAMMAINDEX'        : ['MERGEDH', 'MERGEDK', 'MERGEDL'],
+            'RUNINDEX'          : 'RUN',
+            'IMAGEINDEX'        : ['RUN', 'PHINUMBER', 'SERIES'],
+            'PHIINDEX'          : ['RUN', 'PHINUMBER'],
+        }
+
+        for k,v in indices.items():
+            df.loc[:,k] = df.groupby(v).ngroup()
+        df
+
+        #Prepare the per image metadata
+        k = [i for i in df if 'ipm' in i.lower()]
+        k += ['RUNINDEX']
+        imagemetadata = df[k + ['IMAGEINDEX']].groupby('IMAGEINDEX').first()
+        runidx = imagemetadata['RUNINDEX'].values
+
+        #Construct pivot tables of intensities, errors, metadatakeys
+        iobs        = df.pivot_table(values='IOBS', index=['H', 'K', 'L', 'RUNINDEX','PHIINDEX'], columns='SERIES', fill_value=0)
+        imagenumber = df.pivot_table(values='IMAGEINDEX', index=['H', 'K', 'L', 'RUNINDEX', 'PHIINDEX'], columns='SERIES', fill_value=0)
+        sigma       = df.pivot_table(values='SIGMA(IOBS)', index=['H', 'K', 'L', 'RUNINDEX','PHIINDEX'], columns='SERIES', fill_value=0)
+
+        gammaidx = df.pivot_table(values='GAMMAINDEX', index=['H', 'K', 'L', 'RUNINDEX','PHIINDEX'])
+        gammaidx = np.array(gammaidx).flatten()
+        Foff = df[['GAMMAINDEX', referencekey]].groupby('GAMMAINDEX').first().values.flatten()
+        Foff_per_loss_term = Foff[gammaidx]
+        Foff,Foff_per_loss_term = tf.constant(Foff, dtype=tf.float32), tf.constant(Foff_per_loss_term, dtype=tf.float32)
+
+        ion    = iobs[[i for i in iobs if  'on' in i]].values
+        ioff   = iobs[[i for i in iobs if 'off' in i]].values
+        sigon  = sigma[[i for i in sigma if  'on' in i]].values**2
+        sigoff = sigma[[i for i in sigma if 'off' in i]].values**2
+        imon   = imagenumber[[i for i in imagenumber if  'on' in i]].values
+        imoff  = imagenumber[[i for i in imagenumber if 'off' in i]].values
+
+        #Compute inverse variance weights and normalize them to have rows sum to one
+        invaron,invaroff = sigon.copy(),sigoff.copy()
+        invaron[invaron > 0]    =  1/invaron[invaron > 0]
+        invaroff[invaroff > 0]  = 1/invaroff[invaroff > 0]
+        invaron  = invaron/invaron.sum(1)[:,None]
+        invaroff = invaroff/invaroff.sum(1)[:,None]
+
+        ion  = (ion*invaron).sum(1)
+        ioff = (ioff*invaroff).sum(1)
+        sigon  = (invaron**2*sigon).sum(1)
+        sigoff = (invaroff**2*sigoff).sum(1)
+
+        invaron  = tf.constant(invaron, dtype=tf.float32)
+        invaroff = tf.constant(invaroff, dtype=tf.float32)
+
+        ion     = tf.convert_to_tensor(ion, dtype=tf.float32, name='ion')
+        ioff    = tf.convert_to_tensor(ioff, dtype=tf.float32, name='ioff')
+        sigon   = tf.convert_to_tensor(sigon, dtype=tf.float32, name='sigon')
+        sigoff  = tf.convert_to_tensor(sigoff, dtype=tf.float32, name='sigoff')
+
+        #Problem Variables
+        h = gammaidx.max() + 1
+        r = runidx.max() + 1
+        ipm  = tf.constant(np.float32(imagemetadata[intensitykey]))
+        ipmx = tf.constant(np.float32(imagemetadata[intensitykey+'_xpos']))
+        ipmy = tf.constant(np.float32(imagemetadata[intensitykey+'_ypos']))
+        ipmy = tf.constant(np.float32(imagemetadata[intensitykey+'_ypos']))
+        xstd = np.std(imagemetadata[intensitykey+'_xpos'])
+        ystd = np.std(imagemetadata[intensitykey+'_ypos'])
+        variables = tf.Variable(np.concatenate((
+            np.ones(h, dtype=np.float32),
+            -2*xstd*np.ones(r, dtype=np.float32),
+             2*xstd*np.ones(r, dtype=np.float32),
+            -2*ystd*np.ones(r, dtype=np.float32),
+             2*ystd*np.ones(r, dtype=np.float32),
+             0.5*(xstd+ystd)*np.ones(1, dtype=np.float32),
+             np.zeros(1, dtype=np.float32),
+        )))
+        deltaF = variables[:h]
+        xmin = variables[h:h+r]
+        xmax = variables[h:h+r]
+        ymin = variables[h+r:h+2*r]
+        ymax = variables[h+2*r:h+3*r]
+        beam_spread = tf.nn.softplus(variables[-2])
+        ipm_zp = variables[-1]
+        gammas = deltaF/Foff + 1 #This is only here for backward compatibility. We will not use it directly
+        DF = tf.gather(deltaF, gammaidx)
+        Icryst = 0.25*(ipm + ipm_zp)*tf.nn.softplus(ipm * (
+            tf.erf((tf.gather(xmax, runidx) - ipmx)/beam_spread) - 
+            tf.erf((tf.gather(xmin, runidx) - ipmx)/beam_spread)
+            ) * (
+            tf.erf((tf.gather(ymax, runidx) - ipmy)/beam_spread) - 
+            tf.erf((tf.gather(ymin, runidx) - ipmy)/beam_spread)
+        ))
+
+        Bon  = tf.reduce_sum(invaron*tf.gather(Icryst, imon), 1)
+        Boff = tf.reduce_sum(invaroff*tf.gather(Icryst, imoff), 1)
+
+        variance = ((DF/Foff_per_loss_term+ 1)*(Bon/Boff))**2*sigoff + sigon
+        weights = variance**-1
+        weights = weights/tf.reduce_sum(weights) #normalize the weights to one to stabilize regularizer tuning
+
+
+        likelihood = tf.losses.mean_squared_error(
+            ion,
+            (DF/Foff_per_loss_term + 1)*(Bon/Boff)*ioff,
+            weights=weights
+        )
+
+        sparsifier  = tf.losses.mean_squared_error(tf.zeros(deltaF.shape), deltaF)
+
+        loss = (1. - lp)*likelihood + lp*sparsifier
+
+        #print("6: {}".format(time() - start))
+        self.H = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDH'], dtype=int)
+        self.K = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDK'], dtype=int)
+        self.L = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDL'], dtype=int)
+
+        # Declare an iterator and tensor array loop variables for the gradients.
+        n = array_ops.size(deltaF)
+        loop_vars = [
+            array_ops.constant(0, dtypes.int32),
+            tensor_array_ops.TensorArray(gammas.dtype, n)
+        ]    
+        # Iterate over all elements of the gradient and compute second order
+        # derivatives.
+        gradients = tf.gradients(loss, deltaF)[0]
+        gradients = array_ops.reshape(gradients, [-1])
+        _, diag_A = control_flow_ops.while_loop(
+            lambda j, _: j < n, 
+            lambda j, result: (j + 1, 
+                               result.write(j, tf.gather(tf.gradients(gradients[j], deltaF)[0], j))),
+            loop_vars
+        )    
+        epsilon = 1e-32
+        diag_A = array_ops.reshape(diag_A.stack(), [n])
+        self.variables['DeltaF'] = deltaF
+        self.variables['Hessian Diagonal'] = diag_A
+        self.variables['SIGMA(DeltaF)'] = 1./(diag_A + epsilon)
+        self.variables[referencekey] = Foff
+        self.variables['Icryst'] = Icryst
+        self.variables['xmin'] = xmin
+        self.variables['xmax'] = xmax
+        self.variables['ymin'] = ymin
+        self.variables['ymax'] = ymax
+        self.variables[intensitykey] = ipm
+        self.variables['ipm-zero'] = ipm_zp
+        self.variables['beam-spread'] = beam_spread
+        self.logvars['Loss'] = loss
+        self.logvars['Sparsifier'] = sparsifier
+        self.logvars['Likelihood'] = likelihood
+        self.miller_vars = ['DeltaF', 'SIGMA(DeltaF)', 'Hessian Diagonal', referencekey]
