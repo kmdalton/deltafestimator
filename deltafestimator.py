@@ -876,7 +876,7 @@ class deltafestimator_physical_gaussian2(hkl_model):
             weights=weights
         )
 
-        sparsifier  = lp*tf.losses.mean_squared_error(tf.zeros(deltaF.shape), Foff*deltaF)
+        sparsifier  = lp*tf.losses.mean_squared_error(tf.zeros(deltaF.shape), deltaF/D)
 
         loss = likelihood + sparsifier
 
