@@ -835,6 +835,7 @@ class deltafestimator_physical_gaussian2(hkl_model):
             np.ones(r, dtype=np.float32),
             np.ones(r, dtype=np.float32),
             np.zeros(r, dtype=np.float32),
+            np.ones(r, dtype=np.float32), #Crystal scale
             np.ones(2, dtype=np.float32),
             np.zeros(1, dtype=np.float32),
         )))
@@ -844,6 +845,7 @@ class deltafestimator_physical_gaussian2(hkl_model):
         xstd = tf.nn.softplus(variables[h+2*r:h+3*r])
         ystd = tf.nn.softplus(variables[h+3*r:h+4*r])
         cc   = tf.tanh(variables[h+4*r:h+5*r])
+        xscale = tf.nn.softplus(variables[h+5*r:h+6*r])
         ipm_zp = variables[-1]
         gammas = deltaF/Foff + 1 #This is only here for backward compatibility. We will not use it directly
         DF = tf.gather(deltaF, gammaidx)
@@ -852,7 +854,8 @@ class deltafestimator_physical_gaussian2(hkl_model):
         xstd_ = tf.gather(xstd, runidx)
         ystd_ = tf.gather(ystd, runidx)
         cc_   = tf.gather(cc, runidx)
-        Icryst = (ipm + ipm_zp)*tf.exp(-1/(2*(1-cc_*cc_))*(
+        xscale_ = tf.gather(xscale, runidx)
+        Icryst = xscale_*(ipm + ipm_zp)*tf.exp(-1/(2*(1-cc_*cc_))*(
                 ((xpos_ - ipmx)/xstd_)**2 +
                 ((ypos_ - ipmy)/ystd_)**2 +
                 -2*cc_*(xpos_ - ipmx)*(ypos_ - ipmy)/(xstd_*ystd_)
@@ -867,15 +870,15 @@ class deltafestimator_physical_gaussian2(hkl_model):
         weights = weights/tf.reduce_sum(weights) #normalize the weights to one to stabilize regularizer tuning
 
 
-        likelihood = tf.losses.mean_squared_error(
+        likelihood = (1. - lp)*tf.losses.mean_squared_error(
             ion,
             (DF/Foff_per_loss_term + 1)*(Bon/Boff)*ioff,
             weights=weights
         )
 
-        sparsifier  = tf.losses.mean_squared_error(tf.zeros(deltaF.shape), Foff*deltaF)
+        sparsifier  = lp*tf.losses.mean_squared_error(tf.zeros(deltaF.shape), Foff*deltaF)
 
-        loss = (1. - lp)*likelihood + lp*sparsifier
+        loss = likelihood + sparsifier
 
         #print("6: {}".format(time() - start))
         self.H = np.array(df.groupby('GAMMAINDEX').mean()['MERGEDH'], dtype=int)
